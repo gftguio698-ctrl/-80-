@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>80枚カードゲーム — Prototype</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status-board {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+            background: #eef2f3;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .card-area {
+            margin-bottom: 20px;
+        }
+        .card-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            min-height: 80px;
+            padding: 10px;
+            background: #fafafa;
+            border: 1px dashed #ccc;
+            border-radius: 4px;
+        }
+        .card {
+            width: 60px;
+            height: 80px;
+            background: #fff;
+            border: 2px solid #aaa;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.2s;
+        }
+        .card:hover {
+            border-color: #666;
+            transform: translateY(-2px);
+        }
+        .card.selected {
+            border-color: #ff4757;
+            background-color: #ffe0e6;
+            transform: translateY(-5px);
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button.secondary {
+            background-color: #6c757d;
+        }
+        button.secondary:hover {
+            background-color: #545b62;
+        }
+        .log-area {
+            background: #333;
+            color: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>80枚カードゲーム — Prototype</h2>
+    <p style="font-size: 14px; color: #666;">現在は「手札エンジン」だけを検証する試作版。</p>
+
+    <!-- ステータス表示 -->
+    <div class="status-board">
+        <div><strong>ターン:</strong> <span id="turn-count">1</span></div>
+        <div><strong>山札:</strong> <span id="deck-count">80</span> 枚</div>
+        <div><strong>手札:</strong> <span id="hand-count">0</span> 枚</div>
+        <div><strong>捨て札:</strong> <span id="discard-count">0</span> 枚</div>
+    </div>
+
+    <!-- 手札エリア -->
+    <div class="card-area">
+        <h3>手札 (捨てたいカードを選択してください)</h3>
+        <div id="hand-list" class="card-list"></div>
+    </div>
+
+    <!-- 操作ボタン -->
+    <div class="controls">
+        <button id="end-turn-btn">ターン終了</button>
+        <button id="restart-btn" class="secondary">最初から</button>
+    </div>
+
+    <!-- 捨て札の確認用（最新のカード） -->
+    <div class="card-area">
+        <h3>直近の捨て札</h3>
+        <div id="discard-list" class="card-list"></div>
+    </div>
+
+    <!-- ログ -->
+    <h3>ログ</h3>
+    <div id="log-box" class="log-area"></div>
+</div>
+
+<script>
+    // --- ゲームの初期設定 ---
+    const TOTAL_CARDS = 80;
+    const INITIAL_HAND_SIZE = 5; // 初期手札枚数（調整可能）
+
+    let deck = [];
+    let hand = [];
+    let discard = [];
+    let turn = 1;
+    let selectedHandIndex = null;
+
+    // --- 要素の取得 ---
+    const turnCountEl = document.getElementById('turn-count');
+    const deckCountEl = document.getElementById('deck-count');
+    const handCountEl = document.getElementById('hand-count');
+    const discardCountEl = document.getElementById('discard-count');
+    const handListEl = document.getElementById('hand-list');
+    const discardListEl = document.getElementById('discard-list');
+    const logBoxEl = document.getElementById('log-box');
+    const endTurnBtn = document.getElementById('end-turn-btn');
+    const restartBtn = document.getElementById('restart-btn');
+
+    // --- ゲームの初期化 ---
+    function initGame() {
+        turn = 1;
+        deck = [];
+        hand = [];
+        discard = [];
+        selectedHandIndex = null;
+
+        // 1〜80のカードを生成
+        for (let i = 1; i <= TOTAL_CARDS; i++) {
+            deck.push(i);
+        }
+
+        // シャッフル
+        shuffle(deck);
+
+        log("ゲームを開始しました。山札を80枚用意しました。");
+
+        // 初期手札のドロー
+        drawCards(INITIAL_HAND_SIZE);
+        
+        updateUI();
+    }
+
+    // --- シャッフルアルゴリズム ---
+    function shuffle(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
+    }
+
+    // --- ドロー処理 ---
+    function drawCards(count) {
+        for (let i = 0; i < count; i++) {
+            if (deck.length === 0) {
+                // 山札が切れたら捨て札をシャッフルして戻す（エンジン検証用仕様）
+                if (discard.length > 0) {
+                    log("山札が切れたため、捨て札をシャッフルして山札に戻します。");
+                    deck = [...discard];
+                    discard = [];
+                    shuffle(deck);
+                } else {
+                    log("山札も捨て札もありません！");
+                    break;
+                }
+            }
+            const card = deck.pop();
+            hand.push(card);
+            log(`カード [${card}] をドローしました。`);
+        }
+    }
+
+    // --- UIの更新 ---
+    function updateUI() {
+        // カウントの更新
+        turnCountEl.textContent = turn;
+        deckCountEl.textContent = deck.length;
+        handCountEl.textContent = hand.length;
+        discardCountEl.textContent = discard.length;
+
+        // 手札の表示
+        handListEl.innerHTML = '';
+        hand.forEach((card, index) => {
+            const cardEl = document.createElement('div');
+            cardEl.className = 'card';
+            cardEl.textContent = card;
+            if (selectedHandIndex === index) {
+                cardEl.classList.add('selected');
+            }
+            cardEl.addEventListener('click', () => selectCard(index));
+            handListEl.appendChild(cardEl);
+        });
+
+        // 捨て札の表示（直近の3枚だけ表示）
+        discardListEl.innerHTML = '';
+        const recentDiscards = discard.slice(-3).reverse();
+        recentDiscards.forEach(card => {
+            const cardEl = document.createElement('div');
+            cardEl.className = 'card';
+            cardEl.style.borderColor = '#ccc';
+            cardEl.style.color = '#999';
+            cardEl.textContent = card;
+            discardListEl.appendChild(cardEl);
+        });
+    }
+
+    // --- カードの選択 ---
+    function selectCard(index) {
+        if (selectedHandIndex === index) {
+            selectedHandIndex = null; // 選択解除
+        } else {
+            selectedHandIndex = index; // 選択
+        }
+        updateUI();
+    }
+
+    // --- ターン終了処理 ---
+    function endTurn() {
+        if (selectedHandIndex === null) {
+            alert('捨てたいカードを1枚クリックして選択してください。');
+            return;
+        }
+
+        // 選択したカードを捨てる
+        const discardedCard = hand.splice(selectedHandIndex, 1)[0];
+        discard.push(discardedCard);
+        log(`ターン ${turn}: カード [${discardedCard}] を捨てました。`);
+
+        // 選択状態のリセット
+        selectedHandIndex = null;
+
+        // 次のターンに向けて1枚ドロー（手札が常に5枚に維持されるエンジン例）
+        drawCards(1);
+
+        // ターン数を進める
+        turn++;
+        updateUI();
+    }
+
+    // --- ログ出力 ---
+    function log(message) {
+        const p = document.createElement('p');
+        p.style.margin = '2px 0';
+        p.textContent = message;
+        logBoxEl.appendChild(p);
+        logBoxEl.scrollTop = logBoxEl.scrollHeight;
+    }
+
+    // --- イベントリスナー ---
+    endTurnBtn.addEventListener('click', endTurn);
+    restartBtn.addEventListener('click', initGame);
+
+    // --- アプリ始動 ---
+    initGame();
+</script>
+
+</body>
+</html>
